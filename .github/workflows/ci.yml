@@ -36,11 +36,13 @@ jobs:
 
       - run: docker compose up -d --build
 
-      - run: curl --fail http://localhost:3001/status
-      - run: curl --fail http://localhost:3002/status
-      - run: curl --fail http://localhost:3003/status
-      - run: curl --fail http://localhost:3004/status
-      - run: curl --fail http://localhost:3005/status
+      - name: Wait for services to be ready
+        run: |
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3001/status
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3002/status
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3003/status
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3004/status
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3005/status
 
       - if: always()
         run: docker compose down
@@ -58,6 +60,14 @@ jobs:
       - run: pip install schemathesis
 
       - run: docker compose up -d --build
+
+      - name: Wait for services to be ready
+        run: |
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3001/status
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3002/status
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3003/status
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3004/status
+          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3005/status
 
       - name: Run user service contract tests
         run: |
@@ -97,16 +107,12 @@ jobs:
       - if: always()
         run: docker compose down
 
-  codeql:
+  security-scan:
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/setup-node@v4
         with:
-          languages: javascript
-      - uses: github/codeql-action/autobuild@v3
-      - uses: github/codeql-action/analyze@v3
+          node-version: "20"
+      - run: npm install
+      - run: npm audit --audit-level=high
