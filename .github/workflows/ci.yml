@@ -36,13 +36,27 @@ jobs:
 
       - run: docker compose up -d --build
 
+      - name: Show container status
+        if: always()
+        run: docker compose ps && docker compose logs
+
       - name: Wait for services to be ready
         run: |
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3001/status
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3002/status
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3003/status
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3004/status
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3005/status
+          for port in 3001 3002 3003 3004 3005; do
+            echo "Waiting for port $port..."
+            for i in $(seq 1 30); do
+              if curl --silent --fail http://localhost:$port/status > /dev/null 2>&1; then
+                echo "Port $port ready"
+                break
+              fi
+              if [ $i -eq 30 ]; then
+                echo "Timeout waiting for port $port"
+                docker compose logs
+                exit 1
+              fi
+              sleep 3
+            done
+          done
 
       - if: always()
         run: docker compose down
