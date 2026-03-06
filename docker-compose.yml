@@ -1,32 +1,49 @@
 # This file only ensures that:
 # (1)each service can run
 # (2)each service is isolated
-# (3)no inter‑service communication is implied
+# (3)no inter-service communication is implied
 
 version: "3.9"
+
+x-healthcheck: &default-healthcheck
+  test: ["CMD", "wget", "-qO-", "http://localhost:3000/status"]
+  interval: 5s
+  timeout: 3s
+  retries: 10
+  start_period: 10s
 
 services:
   user-service:
     build: ./services/user-service
     ports:
       - "3001:3000"
+    healthcheck:
+      <<: *default-healthcheck
 
   ride-service:
     build: ./services/ride-service
     ports:
       - "3002:3000"
+    healthcheck:
+      <<: *default-healthcheck
 
   bike-inventory-service:
     build: ./services/bike-inventory-service
     ports:
       - "3003:3000"
+    healthcheck:
+      <<: *default-healthcheck
 
   payment-service:
     build: ./services/payment-service
     ports:
       - "3004:3000"
+    healthcheck:
+      <<: *default-healthcheck
 
   partner-analytics-service:
     build: ./services/partner-analytics-service
     ports:
       - "3005:3000"
+    healthcheck:
+      <<: *default-healthcheck

@@ -36,27 +36,34 @@ jobs:
 
       - run: docker compose up -d --build
 
-      - name: Show container status
-        if: always()
-        run: docker compose ps && docker compose logs
-
-      - name: Wait for services to be ready
+      - name: Wait for all services healthy (shell poll)
         run: |
-          for port in 3001 3002 3003 3004 3005; do
-            echo "Waiting for port $port..."
-            for i in $(seq 1 30); do
-              if curl --silent --fail http://localhost:$port/status > /dev/null 2>&1; then
-                echo "Port $port ready"
-                break
-              fi
-              if [ $i -eq 30 ]; then
-                echo "Timeout waiting for port $port"
-                docker compose logs
+          echo "Waiting for containers to become healthy..."
+          for svc in user-service ride-service bike-inventory-service payment-service partner-analytics-service; do
+            for i in $(seq 1 40); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q $svc) 2>/dev/null || echo "unknown")
+              echo "  $svc: $status (attempt $i)"
+              if [ "$status" = "healthy" ]; then break; fi
+              if [ $i -eq 40 ]; then
+                echo "ERROR: $svc did not become healthy in time"
+                docker compose logs $svc
                 exit 1
               fi
               sleep 3
             done
           done
+
+      - name: Smoke test all /status endpoints
+        run: |
+          for port in 3001 3002 3003 3004 3005; do
+            echo "Smoke testing http://localhost:$port/status"
+            curl --fail --silent http://localhost:$port/status
+            echo
+          done
+
+      - name: Print logs on failure
+        if: failure()
+        run: docker compose logs
 
       - if: always()
         run: docker compose down
@@ -75,13 +82,26 @@ jobs:
 
       - run: docker compose up -d --build
 
-      - name: Wait for services to be ready
+      - name: Wait for all services healthy (shell poll)
         run: |
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3001/status
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3002/status
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3003/status
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3004/status
-          curl --fail --retry 15 --retry-delay 2 --retry-connrefused http://localhost:3005/status
+          echo "Waiting for containers to become healthy..."
+          for svc in user-service ride-service bike-inventory-service payment-service partner-analytics-service; do
+            for i in $(seq 1 40); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q $svc) 2>/dev/null || echo "unknown")
+              echo "  $svc: $status (attempt $i)"
+              if [ "$status" = "healthy" ]; then break; fi
+              if [ $i -eq 40 ]; then
+                echo "ERROR: $svc did not become healthy in time"
+                docker compose logs $svc
+                exit 1
+              fi
+              sleep 3
+            done
+          done
+
+      - name: Print logs on failure
+        if: failure()
+        run: docker compose logs
 
       - name: Run user service contract tests
         run: |
