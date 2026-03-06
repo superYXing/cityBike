@@ -107,7 +107,8 @@ jobs:
         run: |
           schemathesis run openapi/user-service.yaml \
             --url http://localhost:3001 \
-            -H "Authorization: Bearer $USER_JWT"
+            -H "Authorization: Bearer $USER_JWT" \
+            2>&1 | tee schemathesis-user.log
         env:
           USER_JWT: ${{ secrets.USER_JWT }}
 
@@ -116,27 +117,45 @@ jobs:
           schemathesis run openapi/ride-service.yaml \
             --url http://localhost:3002 \
             -H "Authorization: Bearer $USER_JWT" \
-            -H "X-Internal-Token: $INTERNAL_JWT"
+            2>&1 | tee schemathesis-ride.log
         env:
           USER_JWT: ${{ secrets.USER_JWT }}
-          INTERNAL_JWT: ${{ secrets.INTERNAL_JWT }}
 
       - name: Run bike inventory service contract tests
         run: |
           schemathesis run openapi/bike-inventory-service.yaml \
             --url http://localhost:3003 \
             -H "Authorization: Bearer $USER_JWT" \
-            -H "X-Device-Key: $DEVICE_API_KEY"
+            -H "X-Device-Key: $DEVICE_API_KEY" \
+            2>&1 | tee schemathesis-bike-inventory.log
         env:
           USER_JWT: ${{ secrets.USER_JWT }}
+          DEVICE_API_KEY: ${{ secrets.DEVICE_API_KEY }}
+
+      - name: Run payment service contract tests
+        run: |
+          schemathesis run openapi/payment-service.yaml \
+            --url http://localhost:3004 \
+            -H "Authorization: Bearer $INTERNAL_JWT" \
+            2>&1 | tee schemathesis-payment.log
+        env:
+          INTERNAL_JWT: ${{ secrets.INTERNAL_JWT }}
+
+      - name: Run partner analytics service contract tests
+        run: |
+          schemathesis run openapi/partner-analytics-service.yaml \
+            --url http://localhost:3005 \
+            -H "X-Api-Key: $PARTNER_API_KEY" \
+            2>&1 | tee schemathesis-partner-analytics.log
+        env:
+          PARTNER_API_KEY: ${{ secrets.PARTNER_API_KEY }}
+
       - name: Save logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: schemathesis-logs
-          path: |
-            *.log
-            junit.xml
+          path: schemathesis-*.log
 
       - if: always()
         run: docker compose down
