@@ -1,0 +1,321 @@
+openapi: 3.0.3
+info:
+  title: Partner Analytics Service
+  version: 1.0.0
+  description: |
+    Read-only analytics for city/operator partners.
+    Callers must supply both X-Api-Key and X-Partner-Id headers.
+servers:
+  - url: http://localhost:3005
+
+components:
+  securitySchemes:
+    partnerApiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: Partner API key. Must be combined with X-Partner-Id header.
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, traceId]
+          properties:
+            code:
+              type: string
+              example: UNAUTHORIZED
+            message:
+              type: string
+              example: Missing or invalid API key
+            details:
+              type: object
+              nullable: true
+            traceId:
+              type: string
+              format: uuid
+              example: "550e8400-e29b-41d4-a716-446655440000"
+
+    RideStats:
+      type: object
+      required: [periodStart, periodEnd, totalRides, completedRides, cancelledRides, totalDurationSeconds, avgDurationSeconds]
+      properties:
+        periodStart:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        periodEnd:
+          type: string
+          format: date-time
+          example: "2024-01-31T23:59:59Z"
+        totalRides:
+          type: integer
+          example: 1240
+        completedRides:
+          type: integer
+          example: 1198
+        cancelledRides:
+          type: integer
+          example: 42
+        totalDurationSeconds:
+          type: integer
+          example: 4320000
+        avgDurationSeconds:
+          type: integer
+          example: 3484
+
+    FleetStats:
+      type: object
+      required: [totalBikes, availableBikes, inUseBikes, maintenanceBikes, offlineBikes, avgBatteryLevel]
+      properties:
+        totalBikes:
+          type: integer
+          example: 150
+        availableBikes:
+          type: integer
+          example: 97
+        inUseBikes:
+          type: integer
+          example: 38
+        maintenanceBikes:
+          type: integer
+          example: 10
+        offlineBikes:
+          type: integer
+          example: 5
+        avgBatteryLevel:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 71
+
+    RevenueStats:
+      type: object
+      required: [periodStart, periodEnd, currency, totalAmountCents, completedPayments, failedPayments]
+      properties:
+        periodStart:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        periodEnd:
+          type: string
+          format: date-time
+          example: "2024-01-31T23:59:59Z"
+        currency:
+          type: string
+          example: GBP
+        totalAmountCents:
+          type: integer
+          example: 432100
+        completedPayments:
+          type: integer
+          example: 1198
+        failedPayments:
+          type: integer
+          example: 14
+
+# All analytics endpoints require partner API key
+security:
+  - partnerApiKey: []
+
+paths:
+  /status:
+    get:
+      summary: Health check
+      operationId: getStatus
+      security: []
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  version:
+                    type: string
+              example:
+                status: ok
+                version: "1.0.0"
+
+  /v1/analytics/rides:
+    get:
+      summary: Ride usage statistics for the partner
+      operationId: getRideStats
+      security:
+        - partnerApiKey: []
+      parameters:
+        - name: X-Partner-Id
+          in: header
+          required: true
+          schema:
+            type: string
+          example: partner-citycouncil-01
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-01T00:00:00Z"
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-31T23:59:59Z"
+      responses:
+        "200":
+          description: Ride statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RideStats"
+        "400":
+          description: Invalid date range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Missing X-Partner-Id or partner not authorised
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/analytics/fleet:
+    get:
+      summary: Fleet availability and health snapshot
+      operationId: getFleetStats
+      security:
+        - partnerApiKey: []
+      parameters:
+        - name: X-Partner-Id
+          in: header
+          required: true
+          schema:
+            type: string
+          example: partner-citycouncil-01
+      responses:
+        "200":
+          description: Fleet statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FleetStats"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Missing X-Partner-Id or partner not authorised
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/analytics/revenue:
+    get:
+      summary: Revenue statistics for the partner
+      operationId: getRevenueStats
+      security:
+        - partnerApiKey: []
+      parameters:
+        - name: X-Partner-Id
+          in: header
+          required: true
+          schema:
+            type: string
+          example: partner-citycouncil-01
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-01T00:00:00Z"
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-31T23:59:59Z"
+      responses:
+        "200":
+          description: Revenue statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevenueStats"
+        "400":
+          description: Invalid date range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Missing X-Partner-Id or partner not authorised
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

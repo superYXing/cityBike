@@ -1,0 +1,395 @@
+openapi: 3.0.3
+info:
+  title: Ride Service
+  version: 1.0.0
+  description: Manages bike ride lifecycle (start, track, end).
+servers:
+  - url: http://localhost:3002
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Public JWT issued by User Service (aud=citybike-users)
+    internalAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Internal service JWT (aud=citybike-internal)
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, traceId]
+          properties:
+            code:
+              type: string
+              example: RIDE_NOT_FOUND
+            message:
+              type: string
+              example: Ride does not exist
+            details:
+              type: object
+              nullable: true
+            traceId:
+              type: string
+              format: uuid
+              example: "550e8400-e29b-41d4-a716-446655440000"
+
+    Ride:
+      type: object
+      required: [id, userId, bikeId, status, startedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "660e8400-e29b-41d4-a716-446655440001"
+        userId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        bikeId:
+          type: string
+          format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440001"
+        status:
+          type: string
+          enum: [active, completed, cancelled]
+          example: active
+        startedAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:00:00Z"
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        durationSeconds:
+          type: integer
+          nullable: true
+          example: null
+        amountCharged:
+          type: number
+          format: float
+          nullable: true
+          example: null
+
+    StartRideRequest:
+      type: object
+      required: [bikeId]
+      properties:
+        bikeId:
+          type: string
+          format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440001"
+
+    EndRideRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+          nullable: true
+          example: "Parked at stand B3"
+
+paths:
+  /status:
+    get:
+      summary: Health check
+      operationId: getStatus
+      security: []
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  version:
+                    type: string
+              example:
+                status: ok
+                version: "1.0.0"
+
+  /v1/rides:
+    post:
+      summary: Start a new ride
+      operationId: startRide
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRideRequest"
+      responses:
+        "201":
+          description: Ride started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ride"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Bike already in use or user has active ride
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      summary: List rides for authenticated user
+      operationId: listRides
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, completed, cancelled]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of rides
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ride"
+                  total:
+                    type: integer
+                    example: 1
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/rides/{rideId}:
+    get:
+      summary: Get ride by ID
+      operationId: getRide
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: rideId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "660e8400-e29b-41d4-a716-446655440001"
+      responses:
+        "200":
+          description: Ride detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ride"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - not the ride owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Ride not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/rides/{rideId}/end:
+    patch:
+      summary: End an active ride
+      operationId: endRide
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: rideId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "660e8400-e29b-41d4-a716-446655440001"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndRideRequest"
+      responses:
+        "200":
+          description: Ride ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ride"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Ride not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Ride already ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/internal/rides/active:
+    get:
+      summary: List all active rides (internal only - for analytics)
+      operationId: listActiveRides
+      security:
+        - internalAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Active rides
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ride"
+                  total:
+                    type: integer
+                    example: 3
+        "401":
+          description: Missing or invalid internal token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

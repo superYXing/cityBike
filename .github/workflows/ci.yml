@@ -1,0 +1,112 @@
+name: citybike-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate-openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm install -g @apidevtools/swagger-cli
+
+      - run: swagger-cli validate openapi/user-service.yaml
+      - run: swagger-cli validate openapi/ride-service.yaml
+      - run: swagger-cli validate openapi/bike-inventory-service.yaml
+      - run: swagger-cli validate openapi/payment-service.yaml
+      - run: swagger-cli validate openapi/partner-analytics-service.yaml
+
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    needs: validate-openapi
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm ci || npm install
+
+      - run: docker compose up -d --build
+
+      - run: curl --fail http://localhost:3001/status
+      - run: curl --fail http://localhost:3002/status
+      - run: curl --fail http://localhost:3003/status
+      - run: curl --fail http://localhost:3004/status
+      - run: curl --fail http://localhost:3005/status
+
+      - if: always()
+        run: docker compose down
+
+  contract-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install schemathesis
+
+      - run: docker compose up -d --build
+
+      - name: Run user service contract tests
+        run: |
+          schemathesis run openapi/user-service.yaml \
+            --url http://localhost:3001 \
+            -H "Authorization: Bearer $USER_JWT"
+        env:
+          USER_JWT: ${{ secrets.USER_JWT }}
+
+      - name: Run ride service contract tests
+        run: |
+          schemathesis run openapi/ride-service.yaml \
+            --url http://localhost:3002 \
+            -H "Authorization: Bearer $USER_JWT" \
+            -H "X-Internal-Token: $INTERNAL_JWT"
+        env:
+          USER_JWT: ${{ secrets.USER_JWT }}
+          INTERNAL_JWT: ${{ secrets.INTERNAL_JWT }}
+
+      - name: Run bike inventory service contract tests
+        run: |
+          schemathesis run openapi/bike-inventory-service.yaml \
+            --url http://localhost:3003 \
+            -H "Authorization: Bearer $USER_JWT" \
+            -H "X-Device-Key: $DEVICE_API_KEY"
+        env:
+          USER_JWT: ${{ secrets.USER_JWT }}
+      - name: Save logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemathesis-logs
+          path: |
+            *.log
+            junit.xml
+
+      - if: always()
+        run: docker compose down
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3

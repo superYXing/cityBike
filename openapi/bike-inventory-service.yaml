@@ -1,0 +1,469 @@
+openapi: 3.0.3
+info:
+  title: Bike Inventory Service
+  version: 1.0.0
+  description: Manages bike fleet status, location, and availability.
+servers:
+  - url: http://localhost:3003
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Public JWT issued by User Service (aud=citybike-users)
+    internalAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Internal service JWT (aud=citybike-internal)
+    deviceApiKey:
+      type: apiKey
+      in: header
+      name: X-Device-Key
+      description: Per-device API key provisioned to physical bikes
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, traceId]
+          properties:
+            code:
+              type: string
+              example: BIKE_NOT_FOUND
+            message:
+              type: string
+              example: Bike does not exist
+            details:
+              type: object
+              nullable: true
+            traceId:
+              type: string
+              format: uuid
+              example: "550e8400-e29b-41d4-a716-446655440000"
+
+    Location:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+          format: float
+          example: 51.5074
+        lng:
+          type: number
+          format: float
+          example: -0.1278
+
+    Bike:
+      type: object
+      required: [id, model, status, batteryLevel, location]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440001"
+        model:
+          type: string
+          example: CityBike-Pro-3
+        status:
+          type: string
+          enum: [available, in-use, maintenance, offline]
+          example: available
+        batteryLevel:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 85
+        location:
+          $ref: "#/components/schemas/Location"
+        lastSeenAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T09:55:00Z"
+
+    UpdateLocationRequest:
+      type: object
+      required: [lat, lng, batteryLevel]
+      properties:
+        lat:
+          type: number
+          format: float
+          example: 51.5074
+        lng:
+          type: number
+          format: float
+          example: -0.1278
+        batteryLevel:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 82
+
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [available, maintenance, offline]
+          example: maintenance
+
+paths:
+  /status:
+    get:
+      summary: Health check
+      operationId: getStatus
+      security: []
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  version:
+                    type: string
+              example:
+                status: ok
+                version: "1.0.0"
+
+  /v1/bikes:
+    get:
+      summary: List available bikes near a location
+      operationId: listBikes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lat
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+          example: 51.5074
+        - name: lng
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+          example: -0.1278
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [available, in-use, maintenance, offline]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: List of bikes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Bike"
+                  total:
+                    type: integer
+                    example: 2
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/bikes/{bikeId}:
+    get:
+      summary: Get bike details
+      operationId: getBike
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bikeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440001"
+      responses:
+        "200":
+          description: Bike details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bike"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/internal/bikes/{bikeId}/reserve:
+    post:
+      summary: Reserve a bike for a ride (internal only)
+      operationId: reserveBike
+      security:
+        - internalAuth: []
+      parameters:
+        - name: bikeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rideId]
+              properties:
+                rideId:
+                  type: string
+                  format: uuid
+                  example: "660e8400-e29b-41d4-a716-446655440001"
+      responses:
+        "200":
+          description: Bike reserved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bike"
+        "401":
+          description: Missing or invalid internal token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Bike already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/internal/bikes/{bikeId}/release:
+    post:
+      summary: Release a bike after a ride (internal only)
+      operationId: releaseBike
+      security:
+        - internalAuth: []
+      parameters:
+        - name: bikeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rideId]
+              properties:
+                rideId:
+                  type: string
+                  format: uuid
+                  example: "660e8400-e29b-41d4-a716-446655440001"
+      responses:
+        "200":
+          description: Bike released
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bike"
+        "401":
+          description: Missing or invalid internal token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/device/bikes/{bikeId}/location:
+    patch:
+      summary: Update bike GPS location (device reporting)
+      operationId: updateBikeLocation
+      security:
+        - deviceApiKey: []
+      parameters:
+        - name: bikeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLocationRequest"
+      responses:
+        "200":
+          description: Location updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bike"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid or missing device key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/device/bikes/{bikeId}/status:
+    patch:
+      summary: Update bike operational status (device reporting)
+      operationId: updateBikeStatus
+      security:
+        - deviceApiKey: []
+      parameters:
+        - name: bikeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusRequest"
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bike"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid or missing device key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

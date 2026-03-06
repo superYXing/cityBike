@@ -1,0 +1,15 @@
+{
+  "name": "citybike",
+  "version": "1.0.0",
+  "description": "This repository contains minimal scaffolding for the five required services. No architecture, authentication, or API design is provided.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"cd services/user-service && cross-env PORT=3001 npm start\" \"cd services/ride-service && cross-env PORT=3002 npm start\" \"cd services/bike-inventory-service && cross-env PORT=3003 npm start\" \"cd services/payment-service && cross-env PORT=3004 npm start\" \"cd services/partner-analytics-service && cross-env PORT=3005 npm start\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3"
+  },
+  "author": "",
+  "license": "ISC"
+}

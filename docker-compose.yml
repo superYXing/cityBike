@@ -1,0 +1,32 @@
+# This file only ensures that:
+# (1)each service can run
+# (2)each service is isolated
+# (3)no inter‑service communication is implied
+
+version: "3.9"
+
+services:
+  user-service:
+    build: ./services/user-service
+    ports:
+      - "3001:3000"
+
+  ride-service:
+    build: ./services/ride-service
+    ports:
+      - "3002:3000"
+
+  bike-inventory-service:
+    build: ./services/bike-inventory-service
+    ports:
+      - "3003:3000"
+
+  payment-service:
+    build: ./services/payment-service
+    ports:
+      - "3004:3000"
+
+  partner-analytics-service:
+    build: ./services/partner-analytics-service
+    ports:
+      - "3005:3000"
